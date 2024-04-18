@@ -1,39 +1,27 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# absinthe_socket_link
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages).
+Dart library to interact with Absinthe Subscriptions over [Phoenix Channels](https://hexdocs.pm/phoenix/Phoenix.Channel.html#content).
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages).
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
-
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+This library uses [phoenix_socket](https://pub.dev/packages/phoenix_socket) for Phoenix Channel, making the API consistent across web and native environments.
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+This is a simple implementation.
 
 ```dart
-const like = 'sample';
+Link createGraphqlLink() async {
+  final HttpLink httpLink = HttpLink("http://localhost/graphql");
+
+  final wsLink = AbsintheSocketLink(
+    "ws://localhost/graphql/websocket",
+    dynamicParams: () async {
+      return {"authorization": 'My Strong Token'};
+    },
+  );
+
+  return Link.split(
+    (request) => request.isSubscription,
+    wsLink, httpLink,
+  );
+}
 ```
-
-## Additional information
-
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
