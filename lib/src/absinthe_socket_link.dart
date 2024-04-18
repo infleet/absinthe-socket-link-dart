@@ -9,6 +9,7 @@ class AbsintheSocketLink extends Link {
   PhoenixChannel? _channel;
   final String _url;
   final ConnectionParams? _connectionParams;
+  final String _absintheChannelName = '__absinthe__:control';
 
   final RequestSerializer _serializer;
   final ResponseParser _parser;
@@ -31,7 +32,7 @@ class AbsintheSocketLink extends Link {
       socketOptions: PhoenixSocketOptions(dynamicParams: _connectionParams),
     );
     await socket.connect();
-    final channel = socket.addChannel(topic: '__absinthe__:control');
+    final channel = socket.addChannel(topic: _absintheChannelName);
     await channel.join().future;
 
     return channel;
