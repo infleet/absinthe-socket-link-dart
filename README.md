@@ -12,12 +12,14 @@ This is a simple implementation.
 Link createGraphqlLink() async {
   final HttpLink httpLink = HttpLink("http://localhost/graphql");
 
-  final wsLink = AbsintheSocketLink(
+  final phoenixSocket = PhoenixSocket(
     "ws://localhost/graphql/websocket",
-    dynamicParams: () async {
-      return {"authorization": 'My Strong Token'};
-    },
+    socketOptions: PhoenixSocketOptions(
+      params: {"authorization": 'My Strong Token'},
+    ),
   );
+
+  final wsLink = AbsintheSocketLink(phoenixSocket);
 
   return Link.split(
     (request) => request.isSubscription,

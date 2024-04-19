@@ -3,95 +3,96 @@ import 'dart:async';
 import 'package:graphql/client.dart';
 import 'package:phoenix_socket/phoenix_socket.dart';
 
-typedef ConnectionParams = Future<Map<String, String>> Function();
-
 class AbsintheSocketLink extends Link {
   PhoenixChannel? _channel;
-  final String _url;
-  final ConnectionParams? _connectionParams;
+  final PhoenixSocket _socket;
   final String _absintheChannelName = '__absinthe__:control';
-
   final RequestSerializer _serializer;
   final ResponseParser _parser;
 
   AbsintheSocketLink(
-    String url, {
-    ConnectionParams? connectionParams,
+    PhoenixSocket socket, {
     ResponseParser parser = const ResponseParser(),
     RequestSerializer serializer = const RequestSerializer(),
-  })  : _url = url,
-        _connectionParams = connectionParams,
+  })  : _socket = socket,
         _serializer = serializer,
         _parser = parser;
-
-  /// create a new phoenix socket from the given url,
-  /// connect to it, and create a channel, and join it
-  Future<PhoenixChannel> _createChannel() async {
-    final socket = PhoenixSocket(
-      _url,
-      socketOptions: PhoenixSocketOptions(dynamicParams: _connectionParams),
-    );
-    await socket.connect();
-    final channel = socket.addChannel(topic: _absintheChannelName);
-    await channel.join().future;
-
-    return channel;
-  }
 
   @override
   Stream<Response> request(Request request, [NextLink? forward]) async* {
     assert(forward == null, '$this does not support a NextLink (got $forward)');
+    StreamSubscription? closeSocketSubscription;
+    StreamSubscription? openSocketSubscription;
+    Function? onCancel;
+
+    final streamController = StreamController<Response>(
+      onCancel: () async {
+        closeSocketSubscription?.cancel();
+        openSocketSubscription?.cancel();
+        onCancel?.call(true);
+      },
+    );
 
     final payload = _serializer.serializeRequest(request);
-    String? phoenixSubscriptionId;
 
-    await _connectOrReconnect();
+    _channel ??= _socket.addChannel(topic: _absintheChannelName)
+      ..join()
+      ..socket.connect();
 
-    final push = _channel!.push('doc', payload);
-    final pushResponse = await push.future;
+    onCancel ??= _subscribe(streamController, payload);
+    closeSocketSubscription = _channel?.socket.closeStream.listen((event) {
+      onCancel?.call(false);
+      onCancel = null;
+    });
 
-    phoenixSubscriptionId = pushResponse.response['subscriptionId'] as String?;
+    openSocketSubscription = _channel?.socket.openStream.listen((event) async {
+      onCancel ??= _subscribe(streamController, payload);
+    });
 
-    if (phoenixSubscriptionId == null) {
-      if (pushResponse.isOk) {
-        yield _parser.parseResponse(pushResponse.response);
-      } else if (pushResponse.isError) {
-        yield* Stream.error(_parser.parseError(pushResponse.response));
-      }
-      return;
-    }
-
-    final subscriptionStream = _channel!.socket
-        .streamForTopic(phoenixSubscriptionId)
-        .map((event) => _parser.parseResponse(event.payload!['result']));
-
-    try {
-      yield* subscriptionStream;
-    } finally {
-      // Clean-up code when subscription is canceled
-      _channel!
-          .push('unsubscribe', {'subscriptionId': phoenixSubscriptionId})
-          .future
-          .ignore();
-    }
-  }
-
-  Future<void> _connectOrReconnect() async {
-    if (_channel != null && _channel?.state != PhoenixChannelState.closed) {
-      return;
-    }
-
-    final newChannel = await _createChannel();
-    await _close();
-    _channel = newChannel;
-  }
-
-  Future<void> _close() async {
-    await _channel?.leave().future;
-    _channel?.close();
-    _channel = null;
+    yield* streamController.stream;
   }
 
   @override
-  Future<void> dispose() => _close();
+  Future<void> dispose() async {
+    _channel?.close();
+    await _channel?.leave().future;
+    _channel = null;
+  }
+
+  Function([bool unsubscribe]) _subscribe(
+    StreamController<Response> streamController,
+    Map<String, dynamic> payload,
+  ) {
+    String? subscriptionId;
+    StreamSubscription<Response>? streamSubscription;
+
+    _channel?.push('doc', payload).future.then((pushResponse) {
+      subscriptionId = pushResponse.response['subscriptionId'] as String?;
+
+      if (subscriptionId != null) {
+        streamSubscription = _channel?.socket
+            .streamForTopic(subscriptionId!)
+            .map((event) => _parser.parseResponse(event.payload!['result']))
+            .listen(streamController.add, onError: streamController.addError);
+        return;
+      }
+
+      if (pushResponse.isOk) {
+        streamController.add(_parser.parseResponse(pushResponse.response));
+      }
+
+      if (pushResponse.isError) {
+        streamController.addError(_parser.parseError(pushResponse.response));
+      }
+    });
+
+    return ([bool unsubscribe = true]) async {
+      await streamSubscription?.cancel();
+      if (unsubscribe && subscriptionId != null) {
+        _channel?.push('unsubscribe', {'subscriptionId': subscriptionId});
+      }
+      streamSubscription = null;
+      subscriptionId = null;
+    };
+  }
 }
