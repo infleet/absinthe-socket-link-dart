@@ -18,31 +18,18 @@ class AbsintheSocketLink extends Link {
         _serializer = serializer,
         _parser = parser;
 
-  bool channelInitializing = false;
-
-  Future<void> openChannel() async {
-    if (_channel?.socket.isConnected == true) return;
-    if (channelInitializing == true) {
-      await waitingChannelToConnect();
-    } else {
-      channelInitializing = true;
+  void openChannel() {
+    if (_channel == null) {
       _channel = _socket.addChannel(topic: _absintheChannelName);
-      _channel?.join();
-      await _channel?.socket.connect();
-      channelInitializing = false;
-    }
-  }
-
-  Future<void> waitingChannelToConnect() async {
-    while (_channel?.socket.isConnected != true) {
-      await Future.delayed(const Duration(milliseconds: 100));
+      _channel!.join();
+      _channel!.socket.connect().ignore();
     }
   }
 
   @override
   Stream<Response> request(Request request, [NextLink? forward]) async* {
     assert(forward == null, '$this does not support a NextLink (got $forward)');
-    await openChannel();
+    openChannel();
 
     StreamSubscription? closeSocketSubscription;
     StreamSubscription? openSocketSubscription;
