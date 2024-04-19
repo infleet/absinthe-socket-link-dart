@@ -18,15 +18,25 @@ class AbsintheSocketLink extends Link {
         _serializer = serializer,
         _parser = parser;
 
+  void openChannel() {
+    if (_channel == null) {
+      _channel = _socket.addChannel(topic: _absintheChannelName);
+      _channel!.join();
+      _channel!.socket.connect().ignore();
+    }
+  }
+
   @override
-  Stream<Response> request(Request request, [NextLink? forward]) async* {
+  Stream<Response> request(Request request, [NextLink? forward]) {
     assert(forward == null, '$this does not support a NextLink (got $forward)');
+    openChannel();
+
     StreamSubscription? closeSocketSubscription;
     StreamSubscription? openSocketSubscription;
     Function? onCancel;
 
     final streamController = StreamController<Response>(
-      onCancel: () async {
+      onCancel: () {
         closeSocketSubscription?.cancel();
         openSocketSubscription?.cancel();
         onCancel?.call(true);
@@ -34,11 +44,6 @@ class AbsintheSocketLink extends Link {
     );
 
     final payload = _serializer.serializeRequest(request);
-
-    _channel ??= _socket.addChannel(topic: _absintheChannelName)
-      ..join()
-      ..socket.connect();
-
     onCancel ??= _subscribe(streamController, payload);
     closeSocketSubscription = _channel?.socket.closeStream.listen((event) {
       onCancel?.call(false);
@@ -49,7 +54,7 @@ class AbsintheSocketLink extends Link {
       onCancel ??= _subscribe(streamController, payload);
     });
 
-    yield* streamController.stream;
+    return streamController.stream;
   }
 
   @override
