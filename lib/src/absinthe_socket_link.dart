@@ -27,7 +27,7 @@ class AbsintheSocketLink extends Link {
   }
 
   @override
-  Stream<Response> request(Request request, [NextLink? forward]) async* {
+  Stream<Response> request(Request request, [NextLink? forward]) {
     assert(forward == null, '$this does not support a NextLink (got $forward)');
     openChannel();
 
@@ -54,7 +54,7 @@ class AbsintheSocketLink extends Link {
       onCancel ??= _subscribe(streamController, payload);
     });
 
-    yield* streamController.stream;
+    return streamController.stream;
   }
 
   @override
