@@ -18,7 +18,7 @@ class AbsintheSocketLink extends Link {
         _serializer = serializer,
         _parser = parser;
 
-  void openChannel() {
+  void _connect() {
     if (_channel == null) {
       _channel = _socket.addChannel(topic: _absintheChannelName);
       _channel!.join();
@@ -29,7 +29,7 @@ class AbsintheSocketLink extends Link {
   @override
   Stream<Response> request(Request request, [NextLink? forward]) {
     assert(forward == null, '$this does not support a NextLink (got $forward)');
-    openChannel();
+    _connect();
 
     StreamSubscription? closeSocketSubscription;
     StreamSubscription? openSocketSubscription;
