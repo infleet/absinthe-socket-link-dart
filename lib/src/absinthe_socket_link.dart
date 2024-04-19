@@ -18,15 +18,38 @@ class AbsintheSocketLink extends Link {
         _serializer = serializer,
         _parser = parser;
 
+  bool channelInitializing = false;
+
+  Future<void> openChannel() async {
+    if (_channel?.socket.isConnected == true) return;
+    if (channelInitializing == true) {
+      await waitingChannelToConnect();
+    } else {
+      channelInitializing = true;
+      _channel = _socket.addChannel(topic: _absintheChannelName);
+      _channel?.join();
+      await _channel?.socket.connect();
+      channelInitializing = false;
+    }
+  }
+
+  Future<void> waitingChannelToConnect() async {
+    while (_channel?.socket.isConnected != true) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
   @override
   Stream<Response> request(Request request, [NextLink? forward]) async* {
     assert(forward == null, '$this does not support a NextLink (got $forward)');
+    await openChannel();
+
     StreamSubscription? closeSocketSubscription;
     StreamSubscription? openSocketSubscription;
     Function? onCancel;
 
     final streamController = StreamController<Response>(
-      onCancel: () async {
+      onCancel: () {
         closeSocketSubscription?.cancel();
         openSocketSubscription?.cancel();
         onCancel?.call(true);
@@ -34,11 +57,6 @@ class AbsintheSocketLink extends Link {
     );
 
     final payload = _serializer.serializeRequest(request);
-
-    _channel ??= _socket.addChannel(topic: _absintheChannelName)
-      ..join()
-      ..socket.connect();
-
     onCancel ??= _subscribe(streamController, payload);
     closeSocketSubscription = _channel?.socket.closeStream.listen((event) {
       onCancel?.call(false);
