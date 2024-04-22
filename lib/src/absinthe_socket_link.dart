@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:graphql/client.dart';
+import 'package:gql_exec/gql_exec.dart';
+import 'package:gql_link/gql_link.dart';
 import 'package:phoenix_socket/phoenix_socket.dart';
 
 class AbsintheSocketLink extends Link {
